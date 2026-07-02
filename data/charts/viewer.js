@@ -56,6 +56,7 @@
     fieldOrder: [],
     dimensionUnit: "imperial",
     resultLimit: 200,
+    resultPage: 1,
     sortField: "",
     sortDirection: "asc",
     status: "idle",
@@ -148,21 +149,21 @@
 
   function sourceOutlineMarkup() {
     const configuredSources = (viewConfig.match_sources || []).map((source) => source.name).filter(Boolean);
-    const loadedSources = uniqueInOrder(searchState.records.map((record) => topSource(record.directory)));
+    const loadedSources = uniqueInOrder(searchState.records.map((record) => sourceFilterValue(record)));
     const sources = uniqueInOrder([...configuredSources, ...loadedSources]);
     return `
       <ol class="chart-outline-list source-outline-list">
         <li>
           <button class="chart-outline-node source-outline-node${searchState.selectedSource ? "" : " is-active"}" type="button" data-sidebar-source="">
             <span class="chart-outline-dot"></span>
-            <span>All</span>
+            <span>全部</span>
           </button>
         </li>
         ${sources.map((source) => `
           <li>
             <button class="chart-outline-node source-outline-node${searchState.selectedSource === source ? " is-active" : ""}" type="button" data-sidebar-source="${escapeHtml(source)}">
               <span class="chart-outline-dot"></span>
-              <span>${escapeHtml(source)}</span>
+              <span>${escapeHtml(sourceLabel(source))}</span>
             </button>
           </li>
         `).join("")}
@@ -215,6 +216,10 @@
           ` : ""}
           ${isSearchPage ? `
             <div class="sidebar-tools">
+              <div class="unit-toggle size-unit-toggle sidebar-unit-toggle" role="group" aria-label="长宽高单位">
+                <button type="button" data-size-unit="imperial" class="${searchState.dimensionUnit === "imperial" ? "is-active" : ""}">IN</button>
+                <button type="button" data-size-unit="metric" class="${searchState.dimensionUnit === "metric" ? "is-active" : ""}">CM</button>
+              </div>
               <button class="settings-launch" type="button" data-open-settings>表格设置</button>
             </div>
           ` : ""}
@@ -278,7 +283,7 @@
         <label>
           <span>SOURCE</span>
           <select class="search-select" data-search-field="source" ${searchState.status === "loading" ? "disabled" : ""}>
-            <option value="">All sources</option>
+            <option value="">全部 source</option>
           </select>
         </label>
         <label>
@@ -333,13 +338,6 @@
             <button type="button" class="settings-close" data-close-settings aria-label="关闭">×</button>
           </div>
           <div class="settings-dialog-body">
-            <section class="settings-block">
-              <h4>长宽高单位</h4>
-              <div class="unit-toggle size-unit-toggle" role="group" aria-label="长宽高单位">
-                <button type="button" data-size-unit="imperial" class="${searchState.dimensionUnit === "imperial" ? "is-active" : ""}">IN</button>
-                <button type="button" data-size-unit="metric" class="${searchState.dimensionUnit === "metric" ? "is-active" : ""}">CM</button>
-              </div>
-            </section>
             <section class="settings-block">
               <h4>显示字段</h4>
               <div class="field-menu-panel settings-field-list">
@@ -419,6 +417,7 @@
         searchState.selectedConstruct = "";
         searchState.selectedCab = "";
         searchState.selectedBed = "";
+        searchState.resultPage = 1;
         render();
       });
     });
@@ -496,6 +495,7 @@
         } else if (select.dataset.searchField === "bed") {
           searchState.selectedBed = select.value;
         }
+        searchState.resultPage = 1;
         updateSearchControls();
         updateSearchResults();
       });
@@ -509,6 +509,7 @@
         } else {
           delete searchState.columnFilters[key];
         }
+        searchState.resultPage = 1;
         updateSearchResults();
       });
     });
@@ -524,6 +525,7 @@
         } else {
           delete searchState.columnFilters[key];
         }
+        searchState.resultPage = 1;
         updateSearchResults();
       });
     });
@@ -531,6 +533,7 @@
     app.querySelectorAll("[data-result-limit]").forEach((control) => {
       control.addEventListener("change", () => {
         searchState.resultLimit = control.value === "all" ? "all" : Number(control.value);
+        searchState.resultPage = 1;
         updateSearchResults();
       });
     });
@@ -543,6 +546,7 @@
         } else {
           searchState.visibleColumns.delete(checkbox.value);
         }
+        searchState.resultPage = 1;
         updateSearchResults();
       });
     });
@@ -567,6 +571,7 @@
     if (sizeSortSelect) {
       sizeSortSelect.addEventListener("change", () => {
         searchState.sortField = sizeSortSelect.value;
+        searchState.resultPage = 1;
         updateSearchResults();
       });
     }
@@ -576,6 +581,7 @@
       sizeSortDirection.addEventListener("click", () => {
         searchState.sortDirection = searchState.sortDirection === "asc" ? "desc" : "asc";
         sizeSortDirection.textContent = searchState.sortDirection === "asc" ? "↑" : "↓";
+        searchState.resultPage = 1;
         updateSearchResults();
       });
     }
@@ -616,6 +622,7 @@
     searchState.openFilter = "";
     searchState.sortField = "";
     searchState.sortDirection = "asc";
+    searchState.resultPage = 1;
   }
 
   function currentSearchDirectories() {
@@ -995,14 +1002,14 @@
 
     const ready = searchState.status === "ready";
     const makeRecords = queryFilteredRecords();
-    const sourceRecords = makeRecords.filter((record) => !searchState.selectedSource || topSource(record.directory) === searchState.selectedSource);
+    const sourceRecords = makeRecords.filter((record) => !searchState.selectedSource || sourceFilterValue(record) === searchState.selectedSource);
     const modelRecords = sourceRecords.filter((record) => !searchState.selectedMake || record.make === searchState.selectedMake);
     const yearRecords = modelRecords.filter((record) => !searchState.selectedModel || record.model === searchState.selectedModel);
     const constructRecords = yearRecords.filter((record) => !searchState.selectedYear || record.years.includes(Number(searchState.selectedYear)));
     const cabRecords = constructRecords.filter((record) => !searchState.selectedConstruct || filterAtoms(record, "construct").includes(searchState.selectedConstruct));
     const bedRecords = cabRecords.filter((record) => !searchState.selectedCab || filterAtoms(record, "cab").includes(searchState.selectedCab));
 
-    fillSelect(sourceSelect, "All sources", uniqueInOrder(makeRecords.map((record) => topSource(record.directory))), searchState.selectedSource);
+    fillSelect(sourceSelect, "全部 source", uniqueInOrder(makeRecords.map((record) => sourceFilterValue(record))), searchState.selectedSource, sourceLabel);
     fillSelect(makeSelect, "All makes", unique(sourceRecords.map((record) => record.make)), searchState.selectedMake);
     fillSelect(modelSelect, "All models", unique(modelRecords.map((record) => record.model)), searchState.selectedModel);
     fillSelect(yearSelect, "All years", uniqueYears(yearRecords), searchState.selectedYear);
@@ -1040,13 +1047,16 @@
     }
 
     const matches = sortSizeRows(getSearchMatches());
-    const limit = searchState.resultLimit === "all" ? matches.length : searchState.resultLimit;
-    const visibleMatches = matches.slice(0, limit);
+    const limit = pageSizeFor(matches.length);
+    const maxPage = Math.max(1, Math.ceil(matches.length / limit));
+    searchState.resultPage = Math.min(maxPage, Math.max(1, searchState.resultPage || 1));
+    const start = (searchState.resultPage - 1) * limit;
+    const visibleMatches = matches.slice(start, start + limit);
     summary.textContent = matches.length > visibleMatches.length
-      ? `匹配结果：${formatCount(matches.length)} 条记录，当前显示前 ${formatCount(visibleMatches.length)} 条。`
+      ? `匹配结果：${formatCount(matches.length)} 条记录，当前第 ${formatCount(searchState.resultPage)} / ${formatCount(maxPage)} 页。`
       : `匹配结果：${formatCount(matches.length)} 条记录。`;
     updateActiveFilterChips();
-    results.innerHTML = renderResultsTable(visibleMatches, matches.length);
+    results.innerHTML = renderResultsTable(visibleMatches, matches.length, maxPage);
     bindResultColumnResizers();
     bindSizeLinkedRows();
     bindSizeHeaderFilterPopovers();
@@ -1059,7 +1069,7 @@
       if (searchState.selectedMake && record.make !== searchState.selectedMake) {
         return false;
       }
-      if (searchState.selectedSource && topSource(record.directory) !== searchState.selectedSource) {
+      if (searchState.selectedSource && sourceFilterValue(record) !== searchState.selectedSource) {
         return false;
       }
       if (searchState.selectedModel && record.model !== searchState.selectedModel) {
@@ -1122,7 +1132,7 @@
     return searchState.records.filter((record) => tokens.every((token) => recordMatchesToken(record, token)));
   }
 
-  function renderResultsTable(records, totalCount) {
+  function renderResultsTable(records, totalCount, maxPage) {
     if (!records.length) {
       return '<div class="empty-results">No rows match the current selection.</div>';
     }
@@ -1141,7 +1151,7 @@
     ];
     return `
       <div class="results-table-wrap size-results-wrap">
-        <table class="results-table size-results-table dimension-theme-blue">
+        <table class="results-table size-results-table ${searchState.dimensionUnit === "metric" ? "dimension-theme-yellow" : "dimension-theme-blue"}">
           <colgroup>
             ${tableColumns.map((column) => {
               const width = searchState.columnWidths[column.key] || column.width;
@@ -1168,7 +1178,9 @@
           </tbody>
         </table>
         <div class="result-limit-bar">
-          <span>显示 ${formatCount(records.length)} / ${formatCount(totalCount)}</span>
+          <span>第 ${formatCount(searchState.resultPage)} / ${formatCount(maxPage)} 页 · 显示 ${formatCount(records.length)} / ${formatCount(totalCount)}</span>
+          <button class="result-page-button" type="button" data-result-page="prev" data-max-page="${maxPage}" ${searchState.resultPage <= 1 ? "disabled" : ""}>上一页</button>
+          <button class="result-page-button" type="button" data-result-page="next" data-max-page="${maxPage}" ${searchState.resultPage >= maxPage ? "disabled" : ""}>下一页</button>
           <label>
             <span>显示数</span>
             <select class="search-select result-limit-select" data-result-limit>
@@ -1179,6 +1191,13 @@
         </div>
       </div>
     `;
+  }
+
+  function pageSizeFor(totalCount) {
+    if (searchState.resultLimit === "all") {
+      return Math.max(1, totalCount);
+    }
+    return Math.max(1, Number(searchState.resultLimit) || 200);
   }
 
   function resultColumns(records) {
@@ -1198,10 +1217,11 @@
 
   function resultCellMarkup(record, column) {
     if (column.source) {
+      const label = sourceLabel(sourceFilterValue(record));
       if (!record.file) {
-        return `<td class="source-cell">${escapeHtml(record.source || topSource(record.directory))}</td>`;
+        return `<td class="source-cell">${escapeHtml(label)}</td>`;
       }
-      return `<td class="source-cell"><a href="${pagePathByName(record.directory, record.file)}">${escapeHtml(topSource(record.directory) || record.source)}</a></td>`;
+      return `<td class="source-cell"><a href="${pagePathByName(record.directory, record.file)}">${escapeHtml(label)}</a></td>`;
     }
     const value = column.key === "MAKE" ? record.make : resultColumnValue(record, column.key);
     if (column.dimension || isLengthMarginColumn(column.key)) {
@@ -1220,11 +1240,9 @@
   function sizeHeaderLabelMarkup(column) {
     const filterValue = searchState.columnFilters[column.key];
     const filteredClass = filterValue ? " is-filtered" : "";
-    const rangeText = filterValue && typeof filterValue === "object" ? `${filterValue.min || "-∞"} - ${filterValue.max || "+∞"}` : "";
-    const selectedText = filterValue ? `<small>${escapeHtml(rangeText || filterValue)}</small>` : "";
     return `
       <button class="th-label th-filter-trigger${filteredClass}" type="button" data-size-open-filter="${escapeHtml(column.key)}" aria-expanded="${searchState.openFilter === column.key ? "true" : "false"}" title="筛选 ${escapeHtml(column.label)}">
-        <span>${escapeHtml(column.label)}</span>${selectedText}
+        <span>${escapeHtml(column.label)}</span>
       </button>
     `;
   }
@@ -1259,10 +1277,16 @@
     const currentValue = searchState.columnFilters[column.key] || "";
     const records = getSearchMatchesIgnoringColumn(column.key);
     const values = uniqueInOrder(records.map((record) => sizeColumnFilterValue(record, column.key)).filter(Boolean));
-    const allLabel = column.source ? "All sources" : `All ${column.label}`;
-    const options = [{ value: "", label: allLabel }, ...values.map((value) => ({ value, label: value }))];
+    const allLabel = column.source ? "全部 source" : `All ${column.label}`;
+    const options = [{ value: "", label: allLabel }, ...values.map((value) => ({
+      value,
+      label: sameColumn(column.key, "SOURCE") ? sourceLabel(value) : value
+    }))];
     if (currentValue && !values.includes(currentValue)) {
-      options.push({ value: currentValue, label: currentValue });
+      options.push({
+        value: currentValue,
+        label: sameColumn(column.key, "SOURCE") ? sourceLabel(currentValue) : currentValue
+      });
     }
     return options;
   }
@@ -1281,7 +1305,7 @@
     const chips = app.querySelector(".active-filter-chips");
     if (!chips) return;
     const primaryFilters = [
-      ["SOURCE", searchState.selectedSource],
+      ["SOURCE", searchState.selectedSource ? sourceLabel(searchState.selectedSource) : ""],
       ["MAKE", searchState.selectedMake],
       ["MODEL", searchState.selectedModel],
       ["YEAR", searchState.selectedYear],
@@ -1289,12 +1313,18 @@
       [filterConfig("cab").label, searchState.selectedCab],
       [filterConfig("bed").label, searchState.selectedBed]
     ].filter(([, value]) => value);
-    const columnFilters = Object.entries(searchState.columnFilters).filter(([, value]) => value && (!(typeof value === "object") || value.min || value.max));
+    const columnFilters = Object.entries(searchState.columnFilters)
+      .filter(([, value]) => value && (!(typeof value === "object") || value.min || value.max))
+      .map(([key, value]) => {
+        const label = typeof value === "object"
+          ? `${value.min || "-∞"} - ${value.max || "+∞"}`
+          : (sameColumn(key, "SOURCE") ? sourceLabel(value) : value);
+        return [key, label];
+      });
     const items = [...primaryFilters, ...columnFilters];
-    chips.innerHTML = items.map(([key, value]) => {
-      const label = typeof value === "object" ? `${value.min || "-∞"} - ${value.max || "+∞"}` : value;
-      return `<span class="filter-chip"><strong>${escapeHtml(key)}</strong>${escapeHtml(label)}</span>`;
-    }).join("");
+    chips.innerHTML = items.map(([key, value]) => (
+      `<span class="filter-chip"><strong>${escapeHtml(key)}</strong>${escapeHtml(value)}</span>`
+    )).join("");
   }
 
   function bindSizeTableFilters() {
@@ -1308,6 +1338,7 @@
         } else {
           delete searchState.columnFilters[key];
         }
+        searchState.resultPage = 1;
         updateSearchResults();
       });
     });
@@ -1324,6 +1355,7 @@
         } else {
           delete searchState.columnFilters[key];
         }
+        searchState.resultPage = 1;
         updateSearchResults();
       });
     });
@@ -1332,6 +1364,17 @@
       control.dataset.bound = "true";
       control.addEventListener("change", () => {
         searchState.resultLimit = control.value === "all" ? "all" : Number(control.value);
+        searchState.resultPage = 1;
+        updateSearchResults();
+      });
+    });
+    app.querySelectorAll("[data-result-page]").forEach((button) => {
+      if (button.dataset.bound === "true") return;
+      button.dataset.bound = "true";
+      button.addEventListener("click", () => {
+        const maxPage = Number(button.dataset.maxPage || "1");
+        const direction = button.dataset.resultPage === "next" ? 1 : -1;
+        searchState.resultPage = Math.min(maxPage, Math.max(1, searchState.resultPage + direction));
         updateSearchResults();
       });
     });
@@ -1374,7 +1417,7 @@
   function bindSizeLinkedRows() {}
 
   function sizeColumnFilterValue(record, key) {
-    if (sameColumn(key, "SOURCE")) return topSource(record.directory);
+    if (sameColumn(key, "SOURCE")) return sourceFilterValue(record);
     if (sameColumn(key, "MAKE")) return record.make;
     if (sameColumn(key, "MODEL")) return record.model || resultColumnValue(record, key);
     if (sameColumn(key, "YEAR")) return cleanField(resultColumnValue(record, key) || record.year);
@@ -1384,6 +1427,14 @@
     if (sameColumn(key, "TYPE")) return record.type || resultColumnValue(record, key);
     if (sameColumn(key, "SIZE")) return resultColumnValue(record, key) || "NULL";
     return resultColumnValue(record, key);
+  }
+
+  function sourceFilterValue(record) {
+    return cleanField(topSource(record.directory) || record.source) || "__missing__";
+  }
+
+  function sourceLabel(value) {
+    return value === "__missing__" ? "未指定" : cleanField(value);
   }
 
   function sizeReferenceFor(value) {
