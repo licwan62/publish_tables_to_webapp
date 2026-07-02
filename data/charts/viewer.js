@@ -19,7 +19,12 @@
       cab: { label: "CAB", source: "CAB" },
       bed: { label: "BED", source: "BED" }
     },
+    excel_source: {
+      match_data_path: "data/generated/size-match.json"
+    },
+    match_sources: [],
     size_reference: {
+      data_path: "data/generated/size-ref.json",
       match_field: "通用尺码"
     }
   };
@@ -49,11 +54,14 @@
     columnWidths: {},
     visibleColumns: null,
     fieldOrder: [],
+    dimensionUnit: "imperial",
+    resultLimit: 200,
     sortField: "",
     sortDirection: "asc",
     status: "idle",
     message: ""
   };
+  const resultRenderLimit = 200;
   let searchLoadToken = 0;
   let frameSearchTimer = 0;
 
@@ -138,6 +146,30 @@
     `;
   }
 
+  function sourceOutlineMarkup() {
+    const configuredSources = (viewConfig.match_sources || []).map((source) => source.name).filter(Boolean);
+    const loadedSources = uniqueInOrder(searchState.records.map((record) => topSource(record.directory)));
+    const sources = uniqueInOrder([...configuredSources, ...loadedSources]);
+    return `
+      <ol class="chart-outline-list source-outline-list">
+        <li>
+          <button class="chart-outline-node source-outline-node${searchState.selectedSource ? "" : " is-active"}" type="button" data-sidebar-source="">
+            <span class="chart-outline-dot"></span>
+            <span>All</span>
+          </button>
+        </li>
+        ${sources.map((source) => `
+          <li>
+            <button class="chart-outline-node source-outline-node${searchState.selectedSource === source ? " is-active" : ""}" type="button" data-sidebar-source="${escapeHtml(source)}">
+              <span class="chart-outline-dot"></span>
+              <span>${escapeHtml(source)}</span>
+            </button>
+          </li>
+        `).join("")}
+      </ol>
+    `;
+  }
+
   function directoryLeaf(directoryName) {
     const parts = String(directoryName || "").split(/[\\/]/);
     return parts[parts.length - 1] || directoryName;
@@ -159,24 +191,21 @@
             <button class="sidebar-toggle" type="button" aria-label="${sidebarCollapsed ? "展开侧栏" : "收起侧栏"}" aria-expanded="${sidebarCollapsed ? "false" : "true"}">
               <span>${sidebarCollapsed ? "›" : "‹"}</span>
             </button>
-            <div class="sidebar-brand">
-              <div class="root-label">二级页面</div>
-              <div class="current-path">${config.rootLabel}</div>
-            </div>
           </div>
           <nav class="sidebar-nav" aria-label="Pages">
             <a href="index.html" title="首页"><span class="nav-icon">首</span><span class="nav-label">首页</span></a>
             <a class="${!isSearchPage ? "is-active" : ""}" href="size-charts.html" title="Size Chart"><span class="nav-icon">S</span><span class="nav-label">Size Chart</span></a>
             <a href="size-ref.html" title="尺码参考"><span class="nav-icon">参</span><span class="nav-label">尺码参考</span></a>
-            <a href="cars-data.html" title="车型三维"><span class="nav-icon">车</span><span class="nav-label">车型三维</span></a>
             <a class="${isSearchPage ? "is-active" : ""}" href="size-chart.html" title="尺码配对"><span class="nav-icon">尺</span><span class="nav-label">尺码配对</span></a>
           </nav>
-          <div class="sidebar-divider"></div>
-          <div class="sidebar-context">
-            <div class="root-label">Current</div>
-            <div class="current-path">${isSearchPage ? "尺码配对" : "Size Chart"}</div>
-            <p class="sidebar-description">${isSearchPage ? "按车型字段检索不同店铺的配对尺码，并可跳转到车型数据。" : "按店铺和目录浏览已生成的尺码表页面。"}</p>
-          </div>
+          ${isSearchPage ? `
+            <nav class="sidebar-outline source-outline" aria-label="Source filter">
+              <div class="sidebar-filter-title">Source</div>
+              <div class="chart-outline" aria-label="Source filter">
+                ${sourceOutlineMarkup()}
+              </div>
+            </nav>
+          ` : ""}
           ${!isSearchPage ? `
             <nav class="sidebar-outline" aria-label="Size chart outline">
               <div class="chart-outline" aria-label="Size chart folders">
@@ -201,6 +230,7 @@
             <button class="search-reset" type="button">Reset</button>
           </div>
           <div class="search-summary" role="status"></div>
+          <div class="active-filter-chips" aria-label="Active filters"></div>
           <div class="search-results"></div>
         </section>
         ${sizeSettingsModalMarkup()}
@@ -304,6 +334,13 @@
           </div>
           <div class="settings-dialog-body">
             <section class="settings-block">
+              <h4>长宽高单位</h4>
+              <div class="unit-toggle size-unit-toggle" role="group" aria-label="长宽高单位">
+                <button type="button" data-size-unit="imperial" class="${searchState.dimensionUnit === "imperial" ? "is-active" : ""}">IN</button>
+                <button type="button" data-size-unit="metric" class="${searchState.dimensionUnit === "metric" ? "is-active" : ""}">CM</button>
+              </div>
+            </section>
+            <section class="settings-block">
               <h4>显示字段</h4>
               <div class="field-menu-panel settings-field-list">
                 <div class="field-menu-heading">
@@ -370,6 +407,19 @@
           settingsOpen = false;
           render();
         }
+      });
+    });
+
+    app.querySelectorAll("[data-sidebar-source]").forEach((button) => {
+      button.addEventListener("click", () => {
+        searchState.selectedSource = button.dataset.sidebarSource || "";
+        searchState.selectedMake = "";
+        searchState.selectedModel = "";
+        searchState.selectedYear = "";
+        searchState.selectedConstruct = "";
+        searchState.selectedCab = "";
+        searchState.selectedBed = "";
+        render();
       });
     });
 
@@ -463,6 +513,28 @@
       });
     });
 
+    app.querySelectorAll("[data-size-range-filter]").forEach((input) => {
+      input.addEventListener("change", () => {
+        const key = input.dataset.sizeRangeFilter;
+        const side = input.dataset.rangeSide;
+        const current = typeof searchState.columnFilters[key] === "object" ? searchState.columnFilters[key] : {};
+        const next = { ...current, [side]: input.value };
+        if (next.min || next.max) {
+          searchState.columnFilters[key] = next;
+        } else {
+          delete searchState.columnFilters[key];
+        }
+        updateSearchResults();
+      });
+    });
+
+    app.querySelectorAll("[data-result-limit]").forEach((control) => {
+      control.addEventListener("change", () => {
+        searchState.resultLimit = control.value === "all" ? "all" : Number(control.value);
+        updateSearchResults();
+      });
+    });
+
     app.querySelectorAll("[data-size-field-toggle]").forEach((checkbox) => {
       checkbox.addEventListener("change", () => {
         ensureSizeFieldState();
@@ -472,6 +544,14 @@
           searchState.visibleColumns.delete(checkbox.value);
         }
         updateSearchResults();
+      });
+    });
+
+    app.querySelectorAll("[data-size-unit]").forEach((button) => {
+      button.addEventListener("click", () => {
+        searchState.dimensionUnit = button.dataset.sizeUnit || "imperial";
+        ensureSizeFieldState();
+        render();
       });
     });
 
@@ -563,7 +643,9 @@
     updateSearchResults();
 
     try {
-      const indexes = await Promise.all(scopeDirectories.map(loadDirectoryIndex));
+      const indexes = viewConfig.match_sources?.length
+        ? await loadConfiguredMatchIndexes()
+        : await Promise.all(scopeDirectories.map(loadDirectoryIndex));
 
       if (token !== searchLoadToken) {
         return;
@@ -660,6 +742,10 @@
     searchState.status = "ready";
     searchState.message = records.length ? `全量尺码数据：已索引 ${formatCount(records.length)} 条记录。` : "未读取到表格记录。";
     ensureSizeFieldState();
+    if (pageMode !== "charts") {
+      render();
+      return;
+    }
     updateSearchControls();
     updateSearchResults();
   }
@@ -954,8 +1040,13 @@
     }
 
     const matches = sortSizeRows(getSearchMatches());
-    summary.textContent = `匹配结果：${formatCount(matches.length)} 条记录。`;
-    results.innerHTML = renderResultsTable(matches);
+    const limit = searchState.resultLimit === "all" ? matches.length : searchState.resultLimit;
+    const visibleMatches = matches.slice(0, limit);
+    summary.textContent = matches.length > visibleMatches.length
+      ? `匹配结果：${formatCount(matches.length)} 条记录，当前显示前 ${formatCount(visibleMatches.length)} 条。`
+      : `匹配结果：${formatCount(matches.length)} 条记录。`;
+    updateActiveFilterChips();
+    results.innerHTML = renderResultsTable(visibleMatches, matches.length);
     bindResultColumnResizers();
     bindSizeLinkedRows();
     bindSizeHeaderFilterPopovers();
@@ -987,9 +1078,38 @@
         return false;
       }
       for (const [key, value] of Object.entries(searchState.columnFilters)) {
-        if (value && sizeColumnFilterValue(record, key) !== value) return false;
+        if (!value) continue;
+        if (typeof value === "object") {
+          const numeric = Number(sizeColumnFilterValue(record, key));
+          if (!Number.isFinite(numeric)) return false;
+          if (value.min && numeric < Number(value.min)) return false;
+          if (value.max && numeric > Number(value.max)) return false;
+        } else if (sizeColumnFilterValue(record, key) !== value) return false;
       }
       return true;
+    });
+  }
+
+  async function loadConfiguredMatchIndexes() {
+    const path = viewConfig.excel_source?.match_data_path || defaultViewConfig.excel_source.match_data_path;
+    const response = await fetch(path, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`Cannot load ${path}`);
+    }
+    const payload = await response.json();
+    const configuredSources = viewConfig.match_sources || [];
+    const configuredNames = configuredSources.map((source) => source.name);
+    const sources = (payload.sources || []).filter((source) => !configuredNames.length || configuredNames.includes(source.name));
+    return sources.map((source) => {
+      const configured = configuredSources.find((item) => item.name === source.name) || {};
+      const columns = csvList(configured.columns).length ? csvList(configured.columns) : (source.columns || payload.columns || []);
+      const records = (source.records || []).map((record) => ({
+        ...record,
+        directory: source.name,
+        source: source.label || configured.label || source.name,
+        sourceTags: [String(source.name || "").toLowerCase()]
+      }));
+      return { records, columns };
     });
   }
 
@@ -1002,18 +1122,19 @@
     return searchState.records.filter((record) => tokens.every((token) => recordMatchesToken(record, token)));
   }
 
-  function renderResultsTable(records) {
+  function renderResultsTable(records, totalCount) {
     if (!records.length) {
       return '<div class="empty-results">No rows match the current selection.</div>';
     }
 
     const columns = resultColumns(records);
     const tableColumns = [
-      { key: "SOURCE", label: "SOURCE", source: true, width: "56px" },
+      { key: "SOURCE", label: "SOURCE", source: true, width: "118px" },
       { key: "MAKE", label: "MAKE", width: "105px" },
       ...columns.map((column) => ({
         key: column,
         label: column,
+        dimension: isDimensionColumn(column),
         size: isSizeColumn(column),
         width: defaultResultColumnWidth(column)
       }))
@@ -1040,57 +1161,89 @@
           </thead>
           <tbody>
             ${records.map((record) => `
-              <tr class="linked-result-row" data-row-link="${escapeHtml(sizeToCarsLink(record))}" title="点击后到车型三维搜索这行车型">
+              <tr>
                 ${tableColumns.map((column) => resultCellMarkup(record, column)).join("")}
               </tr>
             `).join("")}
           </tbody>
         </table>
+        <div class="result-limit-bar">
+          <span>显示 ${formatCount(records.length)} / ${formatCount(totalCount)}</span>
+          <label>
+            <span>显示数</span>
+            <select class="search-select result-limit-select" data-result-limit>
+              ${[200, 500].map((value) => `<option value="${value}"${searchState.resultLimit === value ? " selected" : ""}>${value}</option>`).join("")}
+              <option value="all"${searchState.resultLimit === "all" ? " selected" : ""}>全部</option>
+            </select>
+          </label>
+        </div>
       </div>
     `;
   }
 
   function resultColumns(records) {
-    const usedColumns = searchState.columns.filter((column) => records.some((record) => resultColumnValue(record, column)));
-    const fallbackColumns = ["MODEL", "YEAR", "TYPE", "CONST", "SIZE"];
+    const usedColumns = searchState.columns;
+    const fallbackColumns = ["MODEL", "版本", "YEAR", "TYPE", "CAB", "BED", "SIZE"];
     const columns = usedColumns.length ? usedColumns : fallbackColumns;
     const withModel = records.some((record) => record.model) && !columns.some((column) => sameColumn(column, "MODEL"))
       ? ["MODEL", ...columns]
       : columns;
-    const withConst = records.some((record) => record.construct) && !withModel.some((column) => sameColumn(column, "CONST"))
-      ? [...withModel, "CONST"]
-      : withModel;
-    const ordered = sortSizeFields(withConst.map((column) => ({ key: column, label: column }))).map((field) => field.key);
+    const ordered = sortSizeFields(withModel.map((column) => ({ key: column, label: column }))).map((field) => field.key);
     const visible = ordered.filter((column) => isSizeColumnVisible(column) || isSizeColumn(column));
-    const withoutSize = visible.filter((column) => !isSizeColumn(column));
+    const rightColumns = [...activeDimensionColumns(), "长度余量"].filter((column) => visible.some((item) => sameColumn(item, column)) || records.some((record) => resultColumnValue(record, column)));
+    const withoutRight = visible.filter((column) => !isSizeColumn(column) && !isDimensionColumn(column) && !isLengthMarginColumn(column) && !rightColumns.some((item) => sameColumn(item, column)));
     const hasSize = withModel.some((column) => isSizeColumn(column)) || records.some((record) => record.values.SIZE || record.size);
-    return hasSize ? [...withoutSize, "SIZE"] : withoutSize;
+    return hasSize ? [...withoutRight, ...rightColumns, "SIZE"] : [...withoutRight, ...rightColumns];
   }
 
   function resultCellMarkup(record, column) {
     if (column.source) {
+      if (!record.file) {
+        return `<td class="source-cell">${escapeHtml(record.source || topSource(record.directory))}</td>`;
+      }
       return `<td class="source-cell"><a href="${pagePathByName(record.directory, record.file)}">${escapeHtml(topSource(record.directory) || record.source)}</a></td>`;
     }
     const value = column.key === "MAKE" ? record.make : resultColumnValue(record, column.key);
+    if (column.dimension || isLengthMarginColumn(column.key)) {
+      return `<td class="dimension-cell size-dimension-cell size-sticky-col ${sizeStickyClass(column.key)}" style="${escapeHtml(isLengthMarginColumn(column.key) ? lengthMarginStyle(value) : "")}"><strong>${escapeHtml(value || "-")}</strong></td>`;
+    }
     if (column.size) {
       const ref = sizeReferenceFor(value);
       const refAttr = ref ? ` data-size-ref="${escapeHtml(cleanField(value).toUpperCase())}"` : "";
       const refClass = ref ? " size-cell-has-ref" : "";
-      return `<td class="size-cell${refClass}"${refAttr} style="--size-bg: ${sizeBackground(value)}; --size-fg: #ffffff"><strong>${escapeHtml(value || "-")}</strong></td>`;
+      const displayValue = value || "NULL";
+      return `<td class="size-cell size-sticky-col size-sticky-size${refClass}"${refAttr} style="--size-bg: ${sizeBackground(value)}; --size-fg: #ffffff"><strong>${escapeHtml(displayValue)}</strong></td>`;
     }
     return `<td>${escapeHtml(value || "")}</td>`;
   }
 
   function sizeHeaderLabelMarkup(column) {
+    const filterValue = searchState.columnFilters[column.key];
+    const filteredClass = filterValue ? " is-filtered" : "";
+    const rangeText = filterValue && typeof filterValue === "object" ? `${filterValue.min || "-∞"} - ${filterValue.max || "+∞"}` : "";
+    const selectedText = filterValue ? `<small>${escapeHtml(rangeText || filterValue)}</small>` : "";
     return `
-      <button class="th-label th-filter-trigger${searchState.columnFilters[column.key] ? " is-filtered" : ""}" type="button" data-size-open-filter="${escapeHtml(column.key)}" title="筛选 ${escapeHtml(column.label)}">
-        ${escapeHtml(column.label)}
+      <button class="th-label th-filter-trigger${filteredClass}" type="button" data-size-open-filter="${escapeHtml(column.key)}" aria-expanded="${searchState.openFilter === column.key ? "true" : "false"}" title="筛选 ${escapeHtml(column.label)}">
+        <span>${escapeHtml(column.label)}</span>${selectedText}
       </button>
     `;
   }
 
   function sizeHeaderFilterMarkup(column, tableColumns) {
     if (searchState.openFilter !== column.key) return "";
+    if (isRangeFilterColumn(column.key)) {
+      const value = typeof searchState.columnFilters[column.key] === "object" ? searchState.columnFilters[column.key] : {};
+      return `
+        <div class="header-filter-popover header-filter-popover-wide">
+          <div class="header-range-filter">
+            <div class="range-inputs">
+              <input type="number" step="0.1" data-size-range-filter="${escapeHtml(column.key)}" data-range-side="min" value="${escapeHtml(value.min || "")}" placeholder="Min">
+              <input type="number" step="0.1" data-size-range-filter="${escapeHtml(column.key)}" data-range-side="max" value="${escapeHtml(value.max || "")}" placeholder="Max">
+            </div>
+          </div>
+        </div>
+      `;
+    }
     return `
       <div class="header-filter-popover">
         <select class="header-filter-select" data-size-table-filter="${escapeHtml(column.key)}" title="筛选 ${escapeHtml(column.label)}">
@@ -1124,6 +1277,26 @@
     return records;
   }
 
+  function updateActiveFilterChips() {
+    const chips = app.querySelector(".active-filter-chips");
+    if (!chips) return;
+    const primaryFilters = [
+      ["SOURCE", searchState.selectedSource],
+      ["MAKE", searchState.selectedMake],
+      ["MODEL", searchState.selectedModel],
+      ["YEAR", searchState.selectedYear],
+      [filterConfig("construct").label, searchState.selectedConstruct],
+      [filterConfig("cab").label, searchState.selectedCab],
+      [filterConfig("bed").label, searchState.selectedBed]
+    ].filter(([, value]) => value);
+    const columnFilters = Object.entries(searchState.columnFilters).filter(([, value]) => value && (!(typeof value === "object") || value.min || value.max));
+    const items = [...primaryFilters, ...columnFilters];
+    chips.innerHTML = items.map(([key, value]) => {
+      const label = typeof value === "object" ? `${value.min || "-∞"} - ${value.max || "+∞"}` : value;
+      return `<span class="filter-chip"><strong>${escapeHtml(key)}</strong>${escapeHtml(label)}</span>`;
+    }).join("");
+  }
+
   function bindSizeTableFilters() {
     app.querySelectorAll("[data-size-table-filter]").forEach((select) => {
       if (select.dataset.bound === "true") return;
@@ -1138,6 +1311,30 @@
         updateSearchResults();
       });
     });
+    app.querySelectorAll("[data-size-range-filter]").forEach((input) => {
+      if (input.dataset.bound === "true") return;
+      input.dataset.bound = "true";
+      input.addEventListener("change", () => {
+        const key = input.dataset.sizeRangeFilter;
+        const side = input.dataset.rangeSide;
+        const current = typeof searchState.columnFilters[key] === "object" ? searchState.columnFilters[key] : {};
+        const next = { ...current, [side]: input.value };
+        if (next.min || next.max) {
+          searchState.columnFilters[key] = next;
+        } else {
+          delete searchState.columnFilters[key];
+        }
+        updateSearchResults();
+      });
+    });
+    app.querySelectorAll("[data-result-limit]").forEach((control) => {
+      if (control.dataset.bound === "true") return;
+      control.dataset.bound = "true";
+      control.addEventListener("change", () => {
+        searchState.resultLimit = control.value === "all" ? "all" : Number(control.value);
+        updateSearchResults();
+      });
+    });
   }
 
   function bindSizeHeaderFilterPopovers() {
@@ -1148,6 +1345,12 @@
         event.stopPropagation();
         searchState.openFilter = searchState.openFilter === button.dataset.sizeOpenFilter ? "" : button.dataset.sizeOpenFilter;
         updateSearchResults();
+      });
+      button.addEventListener("mouseenter", () => {
+        if (searchState.openFilter !== button.dataset.sizeOpenFilter) {
+          searchState.openFilter = button.dataset.sizeOpenFilter;
+          updateSearchResults();
+        }
       });
     });
     app.querySelectorAll(".size-results-table th.is-filter-open").forEach((cell) => {
@@ -1168,17 +1371,7 @@
     });
   }
 
-  function bindSizeLinkedRows() {
-    app.querySelectorAll(".size-results-table .linked-result-row").forEach((row) => {
-      row.addEventListener("click", (event) => {
-        if (event.target.closest("a, button, input, select, .col-resizer, .size-cell-has-ref")) return;
-        const href = row.dataset.rowLink;
-        if (href) {
-          window.location.href = href;
-        }
-      });
-    });
-  }
+  function bindSizeLinkedRows() {}
 
   function sizeColumnFilterValue(record, key) {
     if (sameColumn(key, "SOURCE")) return topSource(record.directory);
@@ -1189,23 +1382,8 @@
     if (sameColumn(key, "CAB")) return configuredRecordValue(record, "cab");
     if (sameColumn(key, "BED")) return configuredRecordValue(record, "bed");
     if (sameColumn(key, "TYPE")) return record.type || resultColumnValue(record, key);
+    if (sameColumn(key, "SIZE")) return resultColumnValue(record, key) || "NULL";
     return resultColumnValue(record, key);
-  }
-
-  function sizeToCarsLink(record) {
-    return `cars-data.html?q=${encodeURIComponent(sizeToCarsQuery(record))}`;
-  }
-
-  function sizeToCarsQuery(record) {
-    return uniqueInOrder([
-      record.make,
-      record.model || resultColumnValue(record, "MODEL"),
-      resultColumnValue(record, "YEAR") || record.year,
-      configuredRecordValue(record, "const") || record.construct,
-      record.type || resultColumnValue(record, "TYPE"),
-      configuredRecordValue(record, "cab"),
-      configuredRecordValue(record, "bed")
-    ].map(cleanField)).join(" ");
   }
 
   function sizeReferenceFor(value) {
@@ -1271,9 +1449,25 @@
 
   function sizeBackground(value) {
     const text = cleanField(value).toUpperCase();
-    const base = ({ A: "#1777c8", C: "#d62828", H: "#00a6a6", S: "#f28c28" })[text[0]] || "#6b7280";
-    const number = Number((text.match(/\d+/) || ["0"])[0]);
+    const ref = sizeReferenceFor(value);
+    const colorKey = cleanField(ref?.["通用尺码"] || value).toUpperCase();
+    const base = ({ A: "#1777c8", C: "#d62828", H: "#00a6a6", S: "#f28c28", T: "#6b7280" })[colorKey[0]] || "#6b7280";
+    const number = Number((colorKey.match(/\d+/) || ["0"])[0]);
     return darkenHex(base, Math.min(0.34, Math.max(0, (number - 1) * 0.055)));
+  }
+
+  function lengthMarginStyle(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "";
+    if (number >= 5 && number <= 15) {
+      return "--dimension-bg: #e6f6ec; --dimension-fg: #137333;";
+    }
+    const distance = number < 5 ? 5 - number : number - 15;
+    const intensity = Math.min(1, distance / 15);
+    const red = Math.round(244 - intensity * 80);
+    const green = Math.round(226 - intensity * 150);
+    const blue = Math.round(226 - intensity * 150);
+    return `--dimension-bg: rgb(${red}, ${green}, ${blue}); --dimension-fg: #8a1f1f;`;
   }
 
   function darkenHex(hex, amount) {
@@ -1298,7 +1492,7 @@
 
   function sizeDisplayFields() {
     const seen = new Set();
-    const keys = ["MODEL", ...searchState.columns, "CONST", "TYPE", "YEAR", "CAB", "BED", "SIZE"].filter(Boolean);
+    const keys = ["MODEL", ...searchState.columns, ...activeDimensionColumns(), "版本", "TYPE", "YEAR", "CAB", "BED", "SIZE"].filter(Boolean);
     const fields = keys.filter((key) => {
       const normalized = cleanField(key).toUpperCase();
       if (seen.has(normalized)) return false;
@@ -1312,9 +1506,25 @@
     const fields = sizeDisplayFields();
     if (!searchState.fieldOrder.length) {
       searchState.fieldOrder = fields.map((field) => field.key);
+    } else {
+      const ordered = new Set(searchState.fieldOrder.map((field) => cleanField(field).toUpperCase()));
+      fields.forEach((field) => {
+        if (!ordered.has(cleanField(field.key).toUpperCase())) {
+          searchState.fieldOrder.push(field.key);
+          ordered.add(cleanField(field.key).toUpperCase());
+        }
+      });
     }
     if (!searchState.visibleColumns) {
       searchState.visibleColumns = new Set(fields.map((field) => field.key));
+    } else {
+      const visible = new Set(Array.from(searchState.visibleColumns).map((field) => cleanField(field).toUpperCase()));
+      fields.forEach((field) => {
+        if (!visible.has(cleanField(field.key).toUpperCase())) {
+          searchState.visibleColumns.add(field.key);
+          visible.add(cleanField(field.key).toUpperCase());
+        }
+      });
     }
   }
 
@@ -1427,9 +1637,10 @@
   }
 
   function parseSizeViewYaml(text) {
-    const result = { filters: {}, table_fields: {}, size_reference: {} };
+    const result = { filters: {}, table_fields: {}, excel_source: {}, match_sources: [], size_reference: {} };
     let section = "";
     let keyName = "";
+    let currentMatchSource = null;
     text.split(/\r?\n/).forEach((line) => {
       if (!line.trim() || line.trim().startsWith("#")) return;
       const indent = (line.match(/^\s*/) || [""])[0].length;
@@ -1437,6 +1648,27 @@
       if (indent === 0 && trimmed.endsWith(":")) {
         section = trimmed.slice(0, -1);
         keyName = "";
+        currentMatchSource = null;
+        return;
+      }
+      if (section === "match_sources" && indent === 2 && trimmed.startsWith("- ")) {
+        currentMatchSource = {};
+        result.match_sources.push(currentMatchSource);
+        const rest = trimmed.slice(2);
+        if (rest.includes(":")) {
+          const [rawKey, ...rawValue] = rest.split(":");
+          currentMatchSource[rawKey.trim()] = parseYamlValue(rawValue.join(":").trim());
+        }
+        return;
+      }
+      if (section === "match_sources" && indent >= 4 && currentMatchSource && trimmed.includes(":")) {
+        const [rawKey, ...rawValue] = trimmed.split(":");
+        currentMatchSource[rawKey.trim()] = parseYamlValue(rawValue.join(":").trim());
+        return;
+      }
+      if (indent === 2 && section === "excel_source" && trimmed.includes(":")) {
+        const [rawKey, ...rawValue] = trimmed.split(":");
+        result.excel_source[rawKey.trim()] = parseYamlValue(rawValue.join(":").trim());
         return;
       }
       if (indent === 2 && trimmed.endsWith(":") && (section === "filters" || section === "table_fields")) {
@@ -1469,6 +1701,8 @@
     const merged = {
       filters: { ...fallback.filters },
       table_fields: { ...fallback.table_fields },
+      excel_source: { ...fallback.excel_source, ...(parsed.excel_source || {}) },
+      match_sources: parsed.match_sources || fallback.match_sources || [],
       size_reference: { ...fallback.size_reference, ...(parsed.size_reference || {}) }
     };
     Object.entries(parsed.filters || {}).forEach(([key, value]) => {
@@ -1481,18 +1715,22 @@
   }
 
   async function loadSizeReferences() {
-    if (!config.sizeRefPath) return;
+    const path = viewConfig.size_reference?.data_path || config.sizeRefPath;
+    if (!path) return;
     try {
-      const response = await fetch(config.sizeRefPath, { cache: "no-store" });
+      const response = await fetch(path, { cache: "no-store" });
       if (!response.ok) return;
-      const rows = parseTsv(await response.text());
+      const text = await response.text();
+      const rows = path.endsWith(".json") ? (JSON.parse(text).rows || []) : parseTsv(text);
       const matchField = viewConfig.size_reference?.match_field || "通用尺码";
       sizeReferenceIndex.clear();
       rows.forEach((row) => {
-        const key = cleanField(row[matchField]).toUpperCase();
-        if (key) {
-          sizeReferenceIndex.set(key, row);
-        }
+        [row[matchField], row["型号"], row["内部尺码"], row["通用尺码"]].forEach((value) => {
+          const key = cleanField(value).toUpperCase();
+          if (key && !sizeReferenceIndex.has(key)) {
+            sizeReferenceIndex.set(key, row);
+          }
+        });
       });
     } catch (error) {
       sizeReferenceIndex.clear();
@@ -1501,16 +1739,21 @@
 
   function resultHeaderClass(column) {
     if (column.source) return "source-heading";
-    if (column.size) return "size-heading";
+    if (column.dimension) return `dimension-heading size-sticky-heading ${sizeStickyClass(column.key)}`;
+    if (isLengthMarginColumn(column.key)) return `dimension-heading size-sticky-heading ${sizeStickyClass(column.key)}`;
+    if (column.size) return "size-heading size-sticky-heading size-sticky-size";
     return "";
   }
 
   function defaultResultColumnWidth(column) {
     if (sameColumn(column, "MODEL")) return "150px";
+    if (sameColumn(column, "版本")) return "92px";
     if (sameColumn(column, "YEAR")) return "92px";
     if (sameColumn(column, "TYPE")) return "130px";
     if (sameColumn(column, "CAB")) return "110px";
     if (sameColumn(column, "BED")) return "90px";
+    if (isLengthMarginColumn(column)) return "92px";
+    if (isDimensionColumn(column)) return "82px";
     if (isSizeColumn(column)) return "104px";
     return "118px";
   }
@@ -1552,8 +1795,38 @@
     return sameColumn(column, "SIZE");
   }
 
+  function isDimensionColumn(column) {
+    return ["L-IN", "W-IN", "H-IN", "L-CM", "W-CM", "H-CM", "长_in", "宽_in", "高_in"].some((item) => sameColumn(column, item));
+  }
+
+  function isLengthMarginColumn(column) {
+    return sameColumn(column, "长度余量");
+  }
+
+  function isRangeFilterColumn(column) {
+    return isDimensionColumn(column) || isLengthMarginColumn(column);
+  }
+
+  function sizeStickyClass(column) {
+    if (sameColumn(column, "L-IN") || sameColumn(column, "L-CM") || sameColumn(column, "长_in")) return "size-sticky-l";
+    if (sameColumn(column, "W-IN") || sameColumn(column, "W-CM") || sameColumn(column, "宽_in")) return "size-sticky-w";
+    if (sameColumn(column, "H-IN") || sameColumn(column, "H-CM") || sameColumn(column, "高_in")) return "size-sticky-h";
+    if (isLengthMarginColumn(column)) return "size-sticky-margin";
+    if (sameColumn(column, "SIZE")) return "size-sticky-size";
+    return "";
+  }
+
+  function activeDimensionColumns() {
+    return searchState.dimensionUnit === "metric" ? ["L-CM", "W-CM", "H-CM"] : ["L-IN", "W-IN", "H-IN"];
+  }
+
   function sameColumn(left, right) {
     return cleanField(left).toUpperCase() === cleanField(right).toUpperCase();
+  }
+
+  function csvList(value) {
+    if (Array.isArray(value)) return value;
+    return String(value || "").split(",").map(cleanField).filter(Boolean);
   }
 
   function pagePathByName(directoryName, file) {

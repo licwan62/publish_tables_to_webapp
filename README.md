@@ -1,171 +1,135 @@
-# TSV to Size Chart HTML
+# 数据查询静态网站
 
-把车辆尺寸 TSV 转成按品牌分组的分页 HTML 表格。输出目录里会有：
+这是一个单纯的静态网站托管项目，用 GitHub Pages 发布。站点不需要构建步骤，页面、样式、脚本和数据文件都会由 GitHub Actions 直接整理后发布到 Pages。
 
-- `output_001.html`、`output_002.html` ...
-- `size-chart.css`：由 `prefer.yaml` 生成的完整样式
+## 页面入口
 
-## 输入格式
+- `index.html`：主页
+- `size-charts.html`：浏览各店铺尺码表页面
+- `size-chart.html`：按车型字段查询不同店铺的配对尺码
+- `size-ref.html`：查询尺码参考数据
 
-脚本会自动识别两种压缩 TSV 表头。
-
-非皮卡：
-
-```tsv
-CAR	MAKE	MODEL	YEAR	VERSION	CONST	BACKSIZE	TYPE-未缩写	TYPE-字符数	TYPE	SIZE
-```
-
-默认用 `MAKE` 做表格标题，表格显示 `MODEL`、`YEAR`、`TYPE`、`SIZE`。
-`TYPE` 默认来自输入表的 `TYPE`；只有没有 `TYPE` 列时，才 fallback 到 `LONG-TYPE`。
-`MODEL` 默认按 `SHORT-MODEL MODEL` 的顺序取值。
-
-皮卡：
-
-```tsv
-TITLE	DESCRIPTION	CAR	MAKE	MODEL	YEAR	VERSION	CAB	BED	BACKSIZE	SIZE
-```
-
-默认用 `TITLE` 做表格标题，表格显示 `YEAR`、`CAB`、`BED`、`SIZE`。
-`CAB` 默认按 `SHORT-CAB CAB` 的顺序取值。
-`DESCRIPTION` 会显示为 `TITLE` 下方的小字，可用 `description_*` 配置单独设置字体、颜色、字重和间距。
-
-两种格式默认都按连续的 `MODEL` 交替行底纹。
-
-## 用法
-
-```powershell
-python .\tsv_to_size_chart_html.py nonpickup-0626.tsv
-```
-
-输入文件默认放在 `data/input` 里。只传文件名时，脚本会自动读取：
+## 主要目录
 
 ```text
-data\input\nonpickup-0626.tsv
+assets/
+  fonts/                 字体文件
+
+data/
+  charts/                尺码表页面、站点 JS/CSS 和视图配置
+    viewer.css
+    viewer.js
+    size-ref.js
+    size-chart-view.yaml
+    ALL/
+    HNT/
+    TM/
+  generated/             从 Excel 导出的线上查询 JSON
+  source/                Excel 源数据和车型尺寸数据
+
+.github/workflows/
+  static.yml             GitHub Pages 发布工作流
 ```
 
-默认输出到 `data/output/输入文件名/`：
+`bak/`、`.vscode/` 和本地辅助脚本不会被发布到 GitHub Pages。
+
+## GitHub Pages 发布
+
+发布工作流在 `.github/workflows/static.yml`。
+
+触发方式：
+
+- 推送到 `main` 分支时自动发布
+- 也可以在 GitHub 仓库的 Actions 页面手动运行 `Deploy static site to Pages`
+
+工作流会先读取 `data/source/车型数据尺码.xlsx`，按 `data/charts/size-chart-view.yaml` 里的工作表配置导出：
 
 ```text
-data\output\nonpickup-0626\output_001.html
-data\output\nonpickup-0626\output_002.html
-data\output\nonpickup-0626\size-chart.css
-data\output\nonpickup-0626\output_generation.log
+data/generated/size-ref.json
+data/generated/size-match.json
 ```
 
-`output_generation.log` 会记录本次生成的输入文件、profile、页数、表格块数量、每页块数，以及每个 make/title 的 logo 匹配结果。
-
-## 合并皮卡和非皮卡
-
-可以用一个 profile 同时生成非皮卡和皮卡，分页会连续排版；前一类最后一页还有空间时，后一类会直接接上：
-
-```powershell
-python .\tsv_to_size_chart_html.py `
-  --non-pickup-input .\data\input\0628-nonpick-1.tsv `
-  --pickup-input .\data\input\0628-pick-1.tsv `
-  --order non-pickup,pickup `
-  --config-path .\profile\combined-preference.yaml `
-  --output .\data\output\0628-full\output.html
-```
-
-`--order` 可以改成 `pickup,non-pickup`。`profile_page_mode: same-page` 会让两类连续排版，改成 `new-page` 会在皮卡/非皮卡切换时另起一页。
-
-合并 profile 里可以用 `non_pickup_` 或 `pickup_` 前缀覆盖任意配置，也可以用短前缀 `nonpick_` 或 `pick_`，例如 `pick_year_col_width`、`pickup_make_background`、`pickup_description_font_size`、`nonpick_stripe_column`。没有前缀的配置作为两类共用默认值。
-
-字段来源可以写成从左到右的 fallback 列表：
-
-```yaml
-non_pickup_make_column: MAKE
-non_pickup_model_column: SHORT-MODEL MODEL
-non_pickup_type_column: TYPE LONG-TYPE
-pickup_cab_column: SHORT-CAB CAB
-```
-
-## 默认配置
-
-`prefer.yaml` 是默认配置源，包含 TSV 字段、标题、分页规则、页面尺寸、颜色、字体、列宽、徽标和边框。生成脚本会按它写出 `size-chart.css`，所以默认值请改 `prefer.yaml`，不要直接改输出目录里的 `size-chart.css`。
-
-常用视觉配置：
-
-```yaml
-page_width_px: 2000
-page_height_px: 1800
-chart_columns: 5
-page_padding_px: 14
-page_text: #111111
-header_text: #f1f1f1
-make_font_size: 25px
-make_padding_y: 5px
-description_font_size: 14px
-cell_font_size: 18px
-badge_font_size: 18px
-table_border_width: 2px
-size_badge_width: 100%
-size_badge_height: 100%
-```
-
-对齐：
-
-```yaml
-brand_title_align: center
-brand_part_align: center
-header_align: center
-```
-
-品牌 logo：
-
-```yaml
-brand_logo_enabled: true
-brand_logo_dir: img_logos
-brand_logo_opacity: 0.8   # 80% 透明度
-brand_logo_width: 46px
-brand_logo_height: 32px
-brand_logo_right: 10px
-```
-
-脚本会按 make/title 自动匹配 `img_logos` 里的图片。文件名会忽略大小写、空格、横线、下划线和末尾数字后缀；例如 `Acura.png` 匹配 `ACURA`，`Land-Rover.png` 匹配 `LAND ROVER`，`Chevrolet.png` 也能匹配 `CHEVROLET SILVERADO 1500` 这类皮卡标题。
-
-分页和输入配置：
-
-- `title`
-- `subtitle`
-- `show_title`
-- `brand_column`
-- `store_column`
-- `stripe_column`
-- `table_columns`
-- `page_bottom_safe_margin_px`
-- `max_rows`
-- `min_rows_per_brand_chunk`
-- `line_height`
-- `table_row_height_px`
-- `make_padding_y`
-- `header_height_px`
-- `brand_block_gap_px`
-
-其中 `page_bottom_safe_margin_px` 会从页面可用高度里扣除；`max_rows: 0` 表示不限制每个品牌块的最大行数；`min_rows_per_brand_chunk` 控制换列拆块时至少保留几行。
-`store_column` 用来指定店铺字段；如果输入里存在这个字段且没有显式传 `--output`，脚本会按每个输入文件和店铺值分别输出到 `data/output/输入文件名-店铺/`。
-`line_height`、`table_row_height_px`、`make_padding_y`、`header_height_px`、`brand_block_gap_px` 会影响分页估算；make 标题栏不再固定高度，会由字体行高和上下 padding 自然撑开，多行标题也会自动变高。
-`make/header/cell/badge` 字号是基准字号；只有某个单元格内容放不下一行时，该单元格才会自动缩小到 `--fit-text-min-font-size` 以上的合适字号。
-
-## 从 CSS 回写 prefer
-
-如果你已经手改了某个输出目录里的 `size-chart.css`，可以把它合并回 `prefer.yaml`。CSS 里有的值会覆盖 yaml；CSS 里没有的配置会沿用原 yaml：
-
-```powershell
-python .\adjust_css_to_prefer_yaml.py .\data\output\nonpick0628\size-chart.css .\prefer.yaml .\prefer-from-css.yaml
-```
-
-如果不传第三个路径，会直接覆盖第二个 yaml。
-
-## 导出图片
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Export-HtmlPagesToImages.ps1 .\data\output\nonpickup-0626\output_*.html
-```
-
-导出脚本会读取 HTML 同目录下 `size-chart.css` 的 `--page-width` 和 `--page-height`。
-图片默认输出到：
+然后整理 `_site` 目录，只复制线上需要的内容：
 
 ```text
-image\nonpickup-0626\
+assets/
+data/
+index.html
+size-chart.html
+size-charts.html
+size-ref.html
+README.md
+.nojekyll
 ```
+
+然后使用 GitHub 官方 Pages Actions 上传并发布：
+
+- `actions/configure-pages`
+- `actions/upload-pages-artifact`
+- `actions/deploy-pages`
+
+仓库第一次启用时，需要在 GitHub 仓库设置里确认：
+
+```text
+Settings -> Pages -> Source -> GitHub Actions
+```
+
+## 更新数据或页面
+
+常见更新位置：
+
+- Excel 源数据：`data/source/车型数据尺码.xlsx`
+- Excel 工作表配置：`data/charts/size-chart-view.yaml`
+- 尺码表 HTML：`data/charts/<店铺>/<类型>/output_*.html`
+- 尺码表样式：`data/charts/<店铺>/<类型>/size-chart.css`
+- 尺码查询配置：`data/charts/size-chart-view.yaml`
+- 页面入口目录配置：`size-charts.html` 和 `size-chart.html`
+
+如果新增或删除 `output_*.html`，需要同步更新 `size-charts.html` 和 `size-chart.html` 里的 `directories` 列表。
+
+尺码参考和尺码配对的数据源在 YAML 中指定：
+
+```yaml
+excel_source:
+  path: data/source/车型数据尺码.xlsx
+  match_data_path: data/generated/size-match.json
+match_sources:
+  - name: ALL
+    sheet: ALL尺码匹配
+  - name: TM
+    sheet: TM尺码匹配
+  - name: HNT
+    sheet: HNT尺码匹配
+size_reference:
+  sheet: ALL尺码
+  data_path: data/generated/size-ref.json
+```
+
+## 本地预览
+
+在项目根目录启动一个静态服务器后访问主页即可：
+
+```powershell
+python -m http.server 8765 --bind 127.0.0.1
+```
+
+然后打开：
+
+```text
+http://127.0.0.1:8765/
+```
+
+## 发布前检查
+
+提交前建议确认这些文件路径都存在：
+
+- `data/charts/viewer.css`
+- `data/charts/viewer.js`
+- `data/charts/size-ref.js`
+- `data/source/车型数据尺码.xlsx`
+- `data/generated/size-ref.json`
+- `data/generated/size-match.json`
+- `data/charts/TM/nonpick/output_001.html`
+- `data/charts/TM/pick/output_001.html`
+- `data/charts/HNT/nonpick/output_001.html`
+- `data/charts/HNT/pick/output_001.html`

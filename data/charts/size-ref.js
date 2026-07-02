@@ -11,7 +11,12 @@
     rows: [],
     query: "",
     status: "loading",
-    message: "正在读取尺码参考..."
+    message: "正在读取尺码参考...",
+    viewConfig: {
+      size_reference: {
+        data_path: "data/generated/size-ref.json"
+      }
+    }
   };
   let sidebarCollapsed = false;
 
@@ -23,24 +28,13 @@
             <button class="sidebar-toggle" type="button" aria-label="${sidebarCollapsed ? "展开侧栏" : "收起侧栏"}" aria-expanded="${sidebarCollapsed ? "false" : "true"}">
               <span>${sidebarCollapsed ? "›" : "‹"}</span>
             </button>
-            <div class="sidebar-brand">
-              <div class="root-label">二级页面</div>
-              <div class="current-path">data/ref</div>
-            </div>
           </div>
           <nav class="sidebar-nav" aria-label="Pages">
             <a href="index.html" title="首页"><span class="nav-icon">首</span><span class="nav-label">首页</span></a>
             <a href="size-charts.html" title="Size Chart"><span class="nav-icon">S</span><span class="nav-label">Size Chart</span></a>
             <a class="is-active" href="size-ref.html" title="尺码参考"><span class="nav-icon">参</span><span class="nav-label">尺码参考</span></a>
-            <a href="cars-data.html" title="车型三维"><span class="nav-icon">车</span><span class="nav-label">车型三维</span></a>
             <a href="size-chart.html" title="尺码配对"><span class="nav-icon">尺</span><span class="nav-label">尺码配对</span></a>
           </nav>
-          <div class="sidebar-divider"></div>
-          <div class="sidebar-context">
-            <div class="root-label">Current</div>
-            <div class="current-path">${escapeHtml(config.title)}</div>
-            <p class="sidebar-description">查看通用尺码对应的分类、CAB 和长宽高参考。</p>
-          </div>
         </aside>
         <div class="viewer-content">
           <section class="search-panel" aria-label="Size reference">
@@ -91,11 +85,14 @@
   async function load() {
     render();
     try {
-      const response = await fetch(config.sourcePath, { cache: "no-store" });
+      await loadViewConfig();
+      const sourcePath = state.viewConfig.size_reference?.data_path || config.sourcePath;
+      const response = await fetch(sourcePath, { cache: "no-store" });
       if (!response.ok) {
-        throw new Error(`Cannot load ${config.sourcePath}`);
+        throw new Error(`Cannot load ${sourcePath}`);
       }
-      const parsed = parseTsv(await response.text());
+      const text = await response.text();
+      const parsed = sourcePath.endsWith(".json") ? JSON.parse(text) : parseTsv(text);
       state.headers = parsed.headers;
       state.rows = parsed.rows;
       state.status = "ready";
@@ -105,6 +102,45 @@
       state.message = "无法读取尺码参考。";
     }
     render();
+  }
+
+  async function loadViewConfig() {
+    if (!config.viewConfigPath) {
+      return;
+    }
+    try {
+      const response = await fetch(config.viewConfigPath, { cache: "no-store" });
+      if (!response.ok) return;
+      state.viewConfig = mergeViewConfig(state.viewConfig, parseViewYaml(await response.text()));
+    } catch (error) {
+      // Keep the default generated JSON path.
+    }
+  }
+
+  function parseViewYaml(text) {
+    const result = { size_reference: {} };
+    let section = "";
+    text.split(/\r?\n/).forEach((line) => {
+      if (!line.trim() || line.trim().startsWith("#")) return;
+      const indent = (line.match(/^\s*/) || [""])[0].length;
+      const trimmed = line.trim();
+      if (indent === 0 && trimmed.endsWith(":")) {
+        section = trimmed.slice(0, -1);
+        return;
+      }
+      if (indent === 2 && section === "size_reference" && trimmed.includes(":")) {
+        const [rawKey, ...rawValue] = trimmed.split(":");
+        result.size_reference[rawKey.trim()] = rawValue.join(":").trim().replace(/^["']|["']$/g, "");
+      }
+    });
+    return result;
+  }
+
+  function mergeViewConfig(fallback, parsed) {
+    return {
+      ...fallback,
+      size_reference: { ...(fallback.size_reference || {}), ...(parsed.size_reference || {}) }
+    };
   }
 
   function updateResults() {
@@ -158,7 +194,7 @@
       return `<td class="size-ref-code"><strong>${escapeHtml(value || "-")}</strong></td>`;
     }
     if (header === "通用尺码") {
-      return `<td class="size-cell size-ref-common-cell" style="${escapeHtml(sizeCellStyle(value))}"><strong>${escapeHtml(value || "-")}</strong></td>`;
+      return `<td class="size-ref-common-cell" style="${escapeHtml(sizeCellStyle(value))}"><strong>${escapeHtml(value || "-")}</strong></td>`;
     }
     return `<td>${escapeHtml(value || "")}</td>`;
   }
