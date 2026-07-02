@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>data/charts Viewer</title>
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    window.SIZE_CHART_VIEWER = {
+      rootLabel: "data/charts",
+      basePath: "",
+      directories: [
+        {
+          name: "TM/nonpick",
+          files: [
+            "output_001.html",
+            "output_002.html",
+            "output_003.html",
+            "output_004.html",
+            "output_005.html"
+          ]
+        },
+        {
+          name: "HNT/nonpick",
+          files: [
+            "output_001.html",
+            "output_002.html",
+            "output_003.html",
+            "output_004.html",
+            "output_005.html"
+          ]
+        },
+        {
+          name: "TM/pick",
+          files: [
+            "output_001.html",
+            "output_002.html"
+          ]
+        },
+        {
+          name: "HNT/pick",
+          files: [
+            "output_001.html",
+            "output_002.html"
+          ]
+        }
+      ]
+    };
+  </script>
+  <script src="viewer.js"></script>
+</body>
+</html>

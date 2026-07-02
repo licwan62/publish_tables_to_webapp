@@ -1,0 +1,64 @@
+table_fields:
+  - source: 品牌
+    label: MAKE
+    width: 126px
+  - source: 前台车型
+    label: MODEL
+    width: 150px
+  - source: 主车型
+    label: MAIN MODEL
+    visible: false
+    width: 180px
+  - source: 代际
+    label: GEN
+    width: 90px
+  - source: 年份区间
+    label: YEAR
+    width: 132px
+  - source: 结构
+    label: CONST
+    width: 132px
+  - source: 版本
+    label: VERSION
+    width: 150px
+  - source: 分类
+    label: CATEGORY
+    width: 110px
+  - source: 驾驶室类型
+    label: CAB
+    width: 120px
+  - source: 货斗长度_ft
+    label: BED
+    width: 118px
+dimensions:
+  imperial:
+    label: 英寸
+    fields:
+      - source: length_in
+        label: LENGTH (IN)
+        width: 118px
+      - source: width_in
+        label: WIDTH (IN)
+        width: 112px
+      - source: height_in
+        label: HEIGHT (IN)
+        width: 112px
+  metric:
+    label: 厘米
+    fields:
+      - source: length_cm
+        label: LENGTH (CM)
+        width: 118px
+      - source: width_cm
+        label: WIDTH (CM)
+        width: 112px
+      - source: height_cm
+        label: HEIGHT (CM)
+        width: 112px
+type_field: 分类
+pickup_type: 皮卡
+pickup_filters:
+  - source: 驾驶室类型
+    label: CAB
+  - source: 货斗长度_ft
+    label: BED
