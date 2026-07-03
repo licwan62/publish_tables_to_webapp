@@ -1,135 +1,95 @@
 # 数据查询静态网站
 
-这是一个单纯的静态网站托管项目，用 GitHub Pages 发布。站点不需要构建步骤，页面、样式、脚本和数据文件都会由 GitHub Actions 直接整理后发布到 Pages。
+这是一个 GitHub Pages 静态网站。网页访问时读取已经整理好的静态文件，不会在浏览器里打开 Excel。
 
-## 页面入口
-
-- `index.html`：主页
-- `size-charts.html`：浏览各店铺尺码表页面
-- `size-chart.html`：按车型字段查询不同店铺的配对尺码
-- `size-ref.html`：查询尺码参考数据
-
-## 主要目录
+## 目录结构
 
 ```text
 assets/
-  fonts/                 字体文件
+  fonts/                         字体
+  app/
+    viewer.css                   前端样式
+    viewer.js                    尺码表浏览和车型配对逻辑
+    size-ref.js                  尺码参考页逻辑
+
+config/
+  size-chart-view.yaml           Excel 工作表和查询字段配置
 
 data/
-  charts/                尺码表页面、站点 JS/CSS 和视图配置
-    viewer.css
-    viewer.js
-    size-ref.js
-    size-chart-view.yaml
-    ALL/
-    HNT/
-    TM/
-  generated/             从 Excel 导出的线上查询 JSON
-  source/                Excel 源数据和车型尺寸数据
+  source/
+    tables/                      表格来源
+      车型数据尺码.xlsx
+    html/                        HTML 来源
+      ALL/
+      HNT/
+      TM/
+      img_logos/
+  generated/                     从 Excel 导出的网页查询 JSON
+    size-match.json
+    size-ref.json
 
-.github/workflows/
-  static.yml             GitHub Pages 发布工作流
+pages/
+  level-1/                       一级网页源码
+    index.html
+    size-chart.html
+    size-charts.html
+    size-ref.html
+  tools/                         本地辅助预览页
+
+tools/
+  export_xlsx_sources.py         从 Excel 导出 JSON
+  build_site.py                  整理 GitHub Pages 发布目录
 ```
 
-`bak/`、`.vscode/` 和本地辅助脚本不会被发布到 GitHub Pages。
+根目录下也保留了一份一级网页，方便本地直接打开或预览；发布时以 `pages/level-1/` 为准。
 
-## GitHub Pages 发布
+## 数据来源
 
-发布工作流在 `.github/workflows/static.yml`。
+- 表格来源：`data/source/tables/车型数据尺码.xlsx`
+- HTML 来源 / 二级网页：`data/source/html/<店铺>/<类型>/output_*.html`
+- 网页查询数据：`data/generated/size-match.json` 和 `data/generated/size-ref.json`
 
-触发方式：
+`config/size-chart-view.yaml` 控制 Excel 读取路径、工作表名、字段和 JSON 输出路径。
 
-- 推送到 `main` 分支时自动发布
-- 也可以在 GitHub 仓库的 Actions 页面手动运行 `Deploy static site to Pages`
+## 日常维护
 
-工作流会先读取 `data/source/车型数据尺码.xlsx`，按 `data/charts/size-chart-view.yaml` 里的工作表配置导出：
-
-```text
-data/generated/size-ref.json
-data/generated/size-match.json
-```
-
-然后整理 `_site` 目录，只复制线上需要的内容：
-
-```text
-assets/
-data/
-index.html
-size-chart.html
-size-charts.html
-size-ref.html
-README.md
-.nojekyll
-```
-
-然后使用 GitHub 官方 Pages Actions 上传并发布：
-
-- `actions/configure-pages`
-- `actions/upload-pages-artifact`
-- `actions/deploy-pages`
-
-仓库第一次启用时，需要在 GitHub 仓库设置里确认：
-
-```text
-Settings -> Pages -> Source -> GitHub Actions
-```
-
-## 更新数据或页面
-
-常见更新位置：
-
-- Excel 源数据：`data/source/车型数据尺码.xlsx`
-- Excel 工作表配置：`data/charts/size-chart-view.yaml`
-- 尺码表 HTML：`data/charts/<店铺>/<类型>/output_*.html`
-- 尺码表样式：`data/charts/<店铺>/<类型>/size-chart.css`
-- 尺码查询配置：`data/charts/size-chart-view.yaml`
-- 页面入口目录配置：`size-charts.html` 和 `size-chart.html`
-
-如果新增或删除 `output_*.html`，需要同步更新 `size-charts.html` 和 `size-chart.html` 里的 `directories` 列表。
-
-尺码参考和尺码配对的数据源在 YAML 中指定：
-
-```yaml
-excel_source:
-  path: data/source/车型数据尺码.xlsx
-  match_data_path: data/generated/size-match.json
-match_sources:
-  - name: ALL
-    sheet: ALL尺码匹配
-  - name: TM
-    sheet: TM尺码匹配
-  - name: HNT
-    sheet: HNT尺码匹配
-size_reference:
-  sheet: ALL尺码
-  data_path: data/generated/size-ref.json
-```
+1. 更新车型/尺码查询数据：替换 `data/source/tables/车型数据尺码.xlsx`。
+2. 更新尺码表页面：替换 `data/source/html/` 下对应店铺和类型的 HTML/CSS/图片。
+3. 如果新增或删除 `output_*.html`，同步更新 `pages/level-1/size-charts.html` 和 `pages/level-1/size-chart.html` 里的 `directories` 列表。
+4. 如果改了一级网页，必要时同步根目录同名 HTML，方便本地直接预览。
+5. 推送到 `main` 后，GitHub Actions 会自动导出 JSON 并发布。
 
 ## 本地预览
 
-在项目根目录启动一个静态服务器后访问主页即可：
+在项目根目录运行：
 
 ```powershell
+python -m pip install openpyxl
+python tools/export_xlsx_sources.py
+python tools/build_site.py
 python -m http.server 8765 --bind 127.0.0.1
 ```
 
 然后打开：
 
 ```text
+http://127.0.0.1:8765/_site/
+```
+
+如果只想快速查看根目录页面，也可以打开：
+
+```text
 http://127.0.0.1:8765/
 ```
 
-## 发布前检查
+## 发布流程
 
-提交前建议确认这些文件路径都存在：
+GitHub Actions 的 `.github/workflows/static.yml` 会执行：
 
-- `data/charts/viewer.css`
-- `data/charts/viewer.js`
-- `data/charts/size-ref.js`
-- `data/source/车型数据尺码.xlsx`
-- `data/generated/size-ref.json`
-- `data/generated/size-match.json`
-- `data/charts/TM/nonpick/output_001.html`
-- `data/charts/TM/pick/output_001.html`
-- `data/charts/HNT/nonpick/output_001.html`
-- `data/charts/HNT/pick/output_001.html`
+1. 安装 Python 和 `openpyxl`
+2. 读取 `data/source/tables/车型数据尺码.xlsx`
+3. 导出 `data/generated/size-match.json` 和 `data/generated/size-ref.json`
+4. 运行 `tools/build_site.py`
+5. 将 `_site/` 发布到 GitHub Pages
+
+线上不会发布 `data/source/tables/` 里的 Excel，只发布前端需要读取的 JSON 和 HTML 来源。

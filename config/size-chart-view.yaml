@@ -1,5 +1,5 @@
 excel_source:
-  path: data/source/车型数据尺码.xlsx
+  path: data/source/tables/车型数据尺码.xlsx
   match_data_path: data/generated/size-match.json
 match_sources:
   - name: ALL

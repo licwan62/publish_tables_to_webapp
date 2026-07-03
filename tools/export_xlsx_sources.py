@@ -8,7 +8,7 @@ import openpyxl
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG_PATH = ROOT / "data" / "charts" / "size-chart-view.yaml"
+CONFIG_PATH = ROOT / "config" / "size-chart-view.yaml"
 
 
 def clean(value: Any) -> str:

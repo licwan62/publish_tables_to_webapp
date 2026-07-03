@@ -42,13 +42,7 @@ jobs:
           python tools/export_xlsx_sources.py
 
       - name: Prepare static site
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf _site
-          mkdir -p _site
-          cp -R assets data _site/
-          cp index.html size-chart.html size-charts.html size-ref.html README.md .nojekyll _site/
+        run: python tools/build_site.py
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
