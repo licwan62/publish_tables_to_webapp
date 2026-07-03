@@ -1556,6 +1556,12 @@ body.is-resizing-column {
   background: #ffffff;
   box-shadow: 0 16px 34px rgba(23, 32, 51, 0.16);
   animation: filter-pop 140ms ease-out;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.header-filter-popover.is-closing {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 @keyframes filter-pop {
@@ -1599,6 +1605,49 @@ body.is-resizing-column {
 .header-filter-select:focus {
   border-color: var(--accent);
   outline: 2px solid rgba(11, 107, 203, 0.14);
+}
+
+.header-option-list {
+  display: grid;
+  gap: 3px;
+  max-height: 236px;
+  overflow: auto;
+  min-width: 148px;
+}
+
+.header-option-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 26px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.15;
+  text-align: left;
+}
+
+.header-option-item:hover,
+.header-option-item:focus {
+  background: rgba(11, 107, 203, 0.08);
+  color: var(--accent-dark);
+  outline: none;
+}
+
+.header-option-item.is-active {
+  background: #dcecff;
+  color: #0a447d;
+}
+
+.header-option-item.is-active::after {
+  margin-left: 12px;
+  content: "✓";
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .header-multi-filter {

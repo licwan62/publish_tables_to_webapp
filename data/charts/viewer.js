@@ -67,6 +67,7 @@
   const resultRenderLimit = 200;
   let searchLoadToken = 0;
   let frameSearchTimer = 0;
+  let headerFilterCloseTimer = 0;
 
   function initialQuery() {
     return new URLSearchParams(window.location.search).get("q") || "";
@@ -1287,11 +1288,13 @@
     }
     return `
       <div class="header-filter-popover">
-        <select class="header-filter-select" data-size-table-filter="${escapeHtml(column.key)}" title="筛选 ${escapeHtml(column.label)}">
-          ${sizeFilterOptions(column, tableColumns).map((option) => (
-            `<option value="${escapeHtml(option.value)}"${option.value === (searchState.columnFilters[column.key] || "") ? " selected" : ""}>${escapeHtml(option.label)}</option>`
-          )).join("")}
-        </select>
+        <div class="header-option-list" role="listbox" aria-label="筛选 ${escapeHtml(column.label)}">
+          ${sizeFilterOptions(column, tableColumns).map((option) => {
+            const current = searchState.columnFilters[column.key] || "";
+            const active = option.value === current;
+            return `<button class="header-option-item${active ? " is-active" : ""}" type="button" data-size-option-filter="${escapeHtml(column.key)}" data-filter-value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</button>`;
+          }).join("")}
+        </div>
       </div>
     `;
   }
@@ -1299,7 +1302,7 @@
   function sizeFilterOptions(column, tableColumns) {
     const currentValue = searchState.columnFilters[column.key] || "";
     const records = getSearchMatchesIgnoringColumn(column.key);
-    const values = uniqueInOrder(records.flatMap((record) => sizeColumnFilterValues(record, column.key)).filter(Boolean));
+    const values = sortedSizeFilterValues(column.key, uniqueInOrder(records.flatMap((record) => sizeColumnFilterValues(record, column.key)).filter(Boolean)));
     const allLabel = `All ${column.label}`;
     const options = [{ value: "", label: allLabel }, ...values.map((value) => ({
       value,
@@ -1314,6 +1317,33 @@
       }
     });
     return options;
+  }
+
+  function sortedSizeFilterValues(key, values) {
+    if (sameColumn(key, "YEAR")) {
+      return [...values].sort((left, right) => Number(right) - Number(left));
+    }
+    if (sameColumn(key, "BED")) {
+      return [...values].sort(compareBedValues);
+    }
+    return values;
+  }
+
+  function compareBedValues(left, right) {
+    const leftNumber = firstNumber(left);
+    const rightNumber = firstNumber(right);
+    if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber !== rightNumber) {
+      return leftNumber - rightNumber;
+    }
+    if (Number.isFinite(leftNumber) !== Number.isFinite(rightNumber)) {
+      return Number.isFinite(leftNumber) ? -1 : 1;
+    }
+    return String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
+  }
+
+  function firstNumber(value) {
+    const match = cleanField(value).match(/\d+(?:\.\d+)?/);
+    return match ? Number(match[0]) : Number.NaN;
   }
 
   function getSearchMatchesIgnoringColumn(ignoredKey) {
@@ -1412,11 +1442,30 @@
       select.dataset.bound = "true";
       select.addEventListener("change", () => {
         const key = select.dataset.sizeTableFilter;
+        cancelHeaderFilterClose();
         if (select.value) {
           searchState.columnFilters[key] = select.value;
         } else {
           delete searchState.columnFilters[key];
         }
+        searchState.openFilter = key;
+        searchState.resultPage = 1;
+        updateSearchResults();
+      });
+    });
+    app.querySelectorAll("[data-size-option-filter]").forEach((button) => {
+      if (button.dataset.bound === "true") return;
+      button.dataset.bound = "true";
+      button.addEventListener("click", () => {
+        const key = button.dataset.sizeOptionFilter;
+        const value = button.dataset.filterValue || "";
+        cancelHeaderFilterClose();
+        if (value) {
+          searchState.columnFilters[key] = value;
+        } else {
+          delete searchState.columnFilters[key];
+        }
+        searchState.openFilter = key;
         searchState.resultPage = 1;
         updateSearchResults();
       });
@@ -1436,11 +1485,13 @@
         const side = input.dataset.rangeSide;
         const current = typeof searchState.columnFilters[key] === "object" ? searchState.columnFilters[key] : {};
         const next = { ...current, [side]: input.value };
+        cancelHeaderFilterClose();
         if (next.min || next.max) {
           searchState.columnFilters[key] = next;
         } else {
           delete searchState.columnFilters[key];
         }
+        searchState.openFilter = key;
         searchState.resultPage = 1;
         updateSearchResults();
       });
@@ -1470,11 +1521,13 @@
     const values = Array.from(app.querySelectorAll(`[data-size-multi-filter="${cssEscape(key)}"]:checked`))
       .map((input) => input.value)
       .filter(Boolean);
+    cancelHeaderFilterClose();
     if (values.length) {
       searchState.columnFilters[key] = uniqueInOrder(values);
     } else {
       delete searchState.columnFilters[key];
     }
+    searchState.openFilter = key;
     searchState.resultPage = 1;
     updateSearchResults();
   }
@@ -1505,6 +1558,7 @@
       if (cell.dataset.headerHoverBound === "true") return;
       cell.dataset.headerHoverBound = "true";
       cell.addEventListener("mouseenter", () => {
+        cancelHeaderFilterClose();
         if (searchState.openFilter !== cell.dataset.colKey) {
           searchState.openFilter = cell.dataset.colKey;
           updateSearchResults();
@@ -1515,6 +1569,7 @@
       if (button.dataset.bound === "true") return;
       button.dataset.bound = "true";
       button.addEventListener("mouseenter", () => {
+        cancelHeaderFilterClose();
         if (searchState.openFilter !== button.dataset.sizeOpenFilter) {
           searchState.openFilter = button.dataset.sizeOpenFilter;
           updateSearchResults();
@@ -1524,19 +1579,39 @@
     app.querySelectorAll(".size-results-table th.is-filter-open").forEach((cell) => {
       if (cell.dataset.hoverBound === "true") return;
       cell.dataset.hoverBound = "true";
+      cell.addEventListener("mouseenter", cancelHeaderFilterClose);
       cell.addEventListener("mouseleave", () => {
         if (cell.contains(document.activeElement)) return;
-        searchState.openFilter = "";
-        updateSearchResults();
+        scheduleHeaderFilterClose();
       });
       cell.addEventListener("focusout", () => {
         window.setTimeout(() => {
           if (cell.matches(":hover") || cell.contains(document.activeElement)) return;
-          searchState.openFilter = "";
-          updateSearchResults();
+          scheduleHeaderFilterClose();
         }, 0);
       });
     });
+  }
+
+  function scheduleHeaderFilterClose() {
+    cancelHeaderFilterClose();
+    const popover = app.querySelector(".size-results-table th.is-filter-open .header-filter-popover");
+    if (popover) {
+      popover.classList.add("is-closing");
+    }
+    headerFilterCloseTimer = window.setTimeout(() => {
+      headerFilterCloseTimer = 0;
+      searchState.openFilter = "";
+      updateSearchResults();
+    }, 170);
+  }
+
+  function cancelHeaderFilterClose() {
+    if (headerFilterCloseTimer) {
+      window.clearTimeout(headerFilterCloseTimer);
+      headerFilterCloseTimer = 0;
+    }
+    app.querySelectorAll(".header-filter-popover.is-closing").forEach((popover) => popover.classList.remove("is-closing"));
   }
 
   function bindSizeLinkedRows() {}
