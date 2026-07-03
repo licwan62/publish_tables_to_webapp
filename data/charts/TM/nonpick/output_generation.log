@@ -1,12 +1,12 @@
 Size chart generation log
-Generated at: 2026-07-03T14:33:34
+Generated at: 2026-07-03T15:39:05
 Config: configs\combined-preference.yaml
 Output directory: D:\Home\Scripts\generate_size_chart_html\data\output\TM\nonpick
 CSS: D:\Home\Scripts\generate_size_chart_html\data\output\TM\nonpick\size-chart.css
 Pages: 5
-Table chunks: 66
+Table chunks: 69
 Unique titles: 48
-Page table chunks: 11, 14, 15, 14, 12
+Page table chunks: 11, 14, 18, 11, 15
 
 Inputs:
 - data\input\0703.xlsx
