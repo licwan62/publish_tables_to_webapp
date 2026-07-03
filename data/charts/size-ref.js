@@ -18,7 +18,24 @@
       }
     }
   };
-  let sidebarCollapsed = false;
+  const sidebarStorageKey = "sizeChartSidebarCollapsed";
+  let sidebarCollapsed = readSidebarCollapsed();
+
+  function readSidebarCollapsed() {
+    try {
+      return window.localStorage.getItem(sidebarStorageKey) === "true";
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function saveSidebarCollapsed(value) {
+    try {
+      window.localStorage.setItem(sidebarStorageKey, value ? "true" : "false");
+    } catch (error) {
+      // Ignore storage failures; the in-page state still updates.
+    }
+  }
 
   function render() {
     app.innerHTML = `
@@ -26,7 +43,7 @@
         <aside class="viewer-side" aria-label="Page outline">
           <div class="sidebar-head">
             <button class="sidebar-toggle" type="button" aria-label="${sidebarCollapsed ? "展开侧栏" : "收起侧栏"}" aria-expanded="${sidebarCollapsed ? "false" : "true"}">
-              <span>${sidebarCollapsed ? "›" : "‹"}</span>
+              <span>☰</span>
             </button>
           </div>
           <nav class="sidebar-nav" aria-label="Pages">
@@ -58,6 +75,7 @@
   function bind() {
     app.querySelector(".sidebar-toggle").addEventListener("click", () => {
       sidebarCollapsed = !sidebarCollapsed;
+      saveSidebarCollapsed(sidebarCollapsed);
       render();
     });
 
