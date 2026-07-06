@@ -55,7 +55,7 @@ tools/
 
 1. 更新车型/尺码查询数据：替换 `data/source/tables/车型数据尺码.xlsx`。
 2. 更新尺码表页面：替换 `data/source/html/` 下对应店铺和类型的 HTML/CSS/图片。
-3. 如果新增或删除 `output_*.html`，同步更新 `pages/level-1/size-charts.html` 和 `pages/level-1/size-chart.html` 里的 `directories` 列表。
+3. 如果新增或删除 `output_*.html`，运行 `tools/build_site.py` 时会自动扫描 `data/source/html/` 并更新发布站点里的目录列表。
 4. 如果改了一级网页，必要时同步根目录同名 HTML，方便本地直接预览。
 5. 推送到 `main` 后，GitHub Actions 会自动导出 JSON 并发布。
 
