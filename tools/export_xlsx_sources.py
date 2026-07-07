@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 from typing import Any
@@ -174,9 +175,13 @@ def write_json(path: Path, payload: Any) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Export frontend query JSON from an Excel workbook.")
+    parser.add_argument("--xlsx-source", type=Path, help="Workbook to export. Defaults to excel_source.path in the YAML config.")
+    args = parser.parse_args()
+
     config = parse_yaml_config(CONFIG_PATH)
     source_config = config["excel_source"]
-    workbook_path = ROOT / source_config["path"]
+    workbook_path = args.xlsx_source.resolve() if args.xlsx_source else ROOT / source_config["path"]
     workbook = openpyxl.load_workbook(workbook_path, read_only=True, data_only=True)
 
     reference_config = config["size_reference"]

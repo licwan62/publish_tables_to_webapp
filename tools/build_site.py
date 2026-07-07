@@ -11,6 +11,7 @@ SITE = ROOT / "_site"
 PRIMARY_PAGES = [
     "index.html",
     "size-chart.html",
+    "size-match.html",
     "size-charts.html",
     "size-ref.html",
 ]
@@ -75,7 +76,7 @@ def main() -> None:
         copy_file(ROOT / "pages" / "level-1" / page, SITE / page)
 
     chart_directories = discover_chart_directories()
-    for page in ["size-chart.html", "size-charts.html"]:
+    for page in ["size-chart.html", "size-match.html", "size-charts.html"]:
         inject_chart_directories(SITE / page, chart_directories)
 
     copy_file(ROOT / "README.md", SITE / "README.md")

@@ -32,6 +32,7 @@ pages/
   level-1/                       一级网页源码
     index.html
     size-chart.html
+    size-match.html
     size-charts.html
     size-ref.html
   tools/                         本地辅助预览页

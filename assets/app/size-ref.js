@@ -48,9 +48,9 @@
           </div>
           <nav class="sidebar-nav" aria-label="Pages">
             <a href="index.html" title="首页"><span class="nav-icon">首</span><span class="nav-label">首页</span></a>
-            <a href="size-charts.html" title="Size Chart"><span class="nav-icon">S</span><span class="nav-label">Size Chart</span></a>
+            <a href="size-chart.html" title="Size Chart"><span class="nav-icon">S</span><span class="nav-label">Size Chart</span></a>
             <a class="is-active" href="size-ref.html" title="尺码参考"><span class="nav-icon">参</span><span class="nav-label">尺码参考</span></a>
-            <a href="size-chart.html" title="尺码配对"><span class="nav-icon">尺</span><span class="nav-label">尺码配对</span></a>
+            <a href="size-match.html" title="尺码配对"><span class="nav-icon">尺</span><span class="nav-label">尺码配对</span></a>
           </nav>
         </aside>
         <div class="viewer-content">
